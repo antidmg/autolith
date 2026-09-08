@@ -846,17 +846,20 @@ newly acquired lease."
 
 (-> application--conversation-create-owned
     ((option application) configuration
-     &key (:timestamp (option timestamp)))
+     &key (:identifier (option string))
+          (:timestamp (option timestamp)))
     (values conversation conversation-lease boolean))
 (defun application--conversation-create-owned
-    (application configuration &key timestamp)
+    (application configuration &key identifier timestamp)
   "Create and claim a fresh conversation, probing another seed on lease races."
   (let ((last-conflict nil)
         (created-at (or timestamp (get-universal-time))))
-    (loop repeat (identifier-base)
+    (loop repeat (if identifier 1 (identifier-base))
           do (let ((conversation
                      (conversation-create
-                      configuration :created-at created-at)))
+                      configuration
+                      :identifier identifier
+                      :created-at created-at)))
                (handler-case
                    (multiple-value-bind (lease acquired-p)
                        (application--conversation-lease-select
@@ -868,6 +871,22 @@ newly acquired lease."
                  (conversation-in-use (condition)
                    (setf last-conflict condition)))))
     (error last-conflict)))
+
+(-> application--conversation-open-or-create-owned
+    ((option application) configuration string)
+    (values conversation conversation-lease boolean))
+(defun application--conversation-open-or-create-owned
+    (application configuration identifier)
+  "Load and claim IDENTIFIER, or create it exactly when no durable log exists."
+  (let* ((normalized
+           (conversation-identifier-migration-resolve configuration identifier))
+         (identity
+           (conversation-pathname-for-id configuration normalized)))
+    (if (conversation-storage-active-pathname identity)
+        (application--conversation-load-owned
+         application configuration normalized)
+        (application--conversation-create-owned
+         application configuration :identifier normalized))))
 
 (-> application-release-conversation-lease (application) null)
 (defun application-release-conversation-lease (application)
@@ -881,11 +900,16 @@ newly acquired lease."
 
 (-> application-create
     (configuration &key (:conversation-id (option string))
+                        (:ensure-conversation-p boolean)
                         (:permission-mode (member :ask :auto :sandboxed :full-access)))
     application)
 (defun application-create
-    (configuration &key conversation-id (permission-mode ':ask))
-  "Create a connected application, loading CONVERSATION-ID with PERMISSION-MODE."
+    (configuration
+     &key conversation-id (ensure-conversation-p nil) (permission-mode ':ask))
+  "Create a connected application, loading or ensuring CONVERSATION-ID."
+  (when (and ensure-conversation-p (null conversation-id))
+    (error 'configuration-error
+           :message "Ensuring a conversation requires its identifier."))
   (let ((preferred-configuration configuration))
     (context-runtime-reset)
     (configuration-ensure-directories preferred-configuration)
@@ -927,13 +951,20 @@ newly acquired lease."
                         (conversation
                          conversation-lease
                          conversation-lease-acquired-p)
-                      (if selected-conversation-id
-                          (application--conversation-load-owned
-                           nil
-                           preferred-configuration
-                           selected-conversation-id)
-                          (application--conversation-create-owned
-                           nil preferred-configuration)))
+                      (cond
+                        ((and selected-conversation-id ensure-conversation-p)
+                         (application--conversation-open-or-create-owned
+                          nil
+                          preferred-configuration
+                          selected-conversation-id))
+                        (selected-conversation-id
+                         (application--conversation-load-owned
+                          nil
+                          preferred-configuration
+                          selected-conversation-id))
+                        (t
+                         (application--conversation-create-owned
+                          nil preferred-configuration))))
                     (let* ((reasoning-traces-p
                              (preferences-reasoning-traces-p
                               preferred-configuration))

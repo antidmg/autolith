@@ -419,12 +419,12 @@
         (when (probe-file temporary)
           (delete-file temporary))))))
 
-(-> run-job-headless-command-authorization
-    (application keyword run-job-request)
+(-> run-job-headless-command-authorization-for-instructions
+    (application keyword string)
     function)
-(defun run-job-headless-command-authorization
-    (application permission-mode request)
-  "Return a fail-closed non-interactive command authorization function."
+(defun run-job-headless-command-authorization-for-instructions
+    (application permission-mode user-instructions)
+  "Return fail-closed command authorization for one headless instruction string."
   (lambda (command directory)
     (case permission-mode
       (:full-access
@@ -442,10 +442,19 @@
               :provider (application-provider application)
               :configuration (application-configuration application)
               :sandbox-available-p (application--command-sandbox-available-p)
-              :user-instructions (run-job-request-prompt request))))
+              :user-instructions user-instructions)))
            ':deny))
       (otherwise
        ':deny))))
+
+(-> run-job-headless-command-authorization
+    (application keyword run-job-request)
+    function)
+(defun run-job-headless-command-authorization
+    (application permission-mode request)
+  "Return fail-closed command authorization for one child job."
+  (run-job-headless-command-authorization-for-instructions
+   application permission-mode (run-job-request-prompt request)))
 
 (-> run-job-headless-tool-authorization (keyword) function)
 (defun run-job-headless-tool-authorization (permission-mode)

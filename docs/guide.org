@@ -703,6 +703,38 @@ only sandboxed commands. =full= permits full command execution. External tool
 calls whose configured policy requires approval are denied unless full access
 was selected. The role allowlist remains the child capability boundary.
 
+=run-primary-job= is the explicit non-interactive boundary for the primary
+agent. Unlike =run-job=, it preserves the primary registry, including =self.*=
+when Autolith was not launched with =--immutable=. It does not make =self.*=
+child-safe or change child-role policy.
+
+#+BEGIN_SRC sh
+autolith --permissions auto run-primary-job \
+  --input /path/to/primary-job.sexp \
+  --output /path/to/primary-result.sexp
+#+END_SRC
+
+The input names its durable conversation and fences the exact next sequence:
+
+#+BEGIN_SRC lisp
+(:autolith-primary-job
+ :version 1
+ :id "realm-effect-id"
+ :conversation-id "realm-continuation-id"
+ :expected-next-sequence 1
+ :prompt "Inspect the failure and improve the active image."
+ :timeout-seconds 900)
+#+END_SRC
+
+The command opens or creates that exact conversation. A mismatched
+=:expected-next-sequence= fails before another user message or provider request,
+so retrying an uncertain completed turn cannot duplicate it silently. The
+atomic =(:autolith-primary-job-result :version 1 ...)= artifact reports the
+conversation cursor, final response, portable observer events, aggregate usage,
+and the exact mutation-journal records appended during the job. Continue with
+the returned =:next-sequence=. The in-process deadline interrupts the active
+turn; the calling supervisor still owns the hard process-lifetime bound.
+
 * Generations and recovery
 
 =(checkpoint)= requires a clean Git worktree and a passing =./script/check=.

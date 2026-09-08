@@ -74,6 +74,14 @@ terminal prompt          local Lisp result       finalized scrollback
 - Local operations that dont conflict with a turn can run immediately
 - Modal, terminal-owning, authorization-gated etc actions wait for a safe point
 
+- =run-primary-job= enters the same primary agent, conversation, and tool
+  registry without terminal rendering. Its caller supplies a stable
+  conversation identifier and expected next sequence; a mismatch fails before
+  a duplicate turn. The result exports portable turn status and the mutation
+  journal interval for an external durable supervisor.
+- =run-job= remains a separate child-role boundary. Headless primary access
+  does not grant =self.*= to children.
+
 * User state
 
 Autolith stores portable, readable S-expressions (for now, it is possible we migrate

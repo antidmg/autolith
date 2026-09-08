@@ -1005,6 +1005,46 @@ path."
          (unless (zerop status)
            (uiop:quit status)))))))
 
+(-> main--run-primary-job-command () clingon:command)
+(defun main--run-primary-job-command ()
+  "Return the non-interactive primary-agent job command definition."
+  (make-command
+   :name "run-primary-job"
+   :description "run one primary-agent job without a terminal"
+   :options
+   (list
+    (make-option ':string :long-name "input" :key ':input
+                 :parameter "FILE" :description "data-only primary job S-expression")
+    (make-option ':string :long-name "output" :key ':output
+                 :parameter "FILE" :description "atomically installed terminal result"))
+   :handler
+   (lambda (command)
+     (when (command-arguments command)
+       (error 'configuration-error
+              :message
+              "run-primary-job accepts only --input and --output options."))
+     (let ((input (getopt* command ':input))
+           (output (getopt* command ':output)))
+       (unless (non-empty-string-p input)
+         (error 'configuration-error
+                :message "run-primary-job requires --input FILE."))
+       (unless (non-empty-string-p output)
+         (error 'configuration-error
+                :message "run-primary-job requires --output FILE."))
+       (let* ((configuration
+                (configuration-create
+                 :immutable-p (not (null (getopt* command ':immutable)))
+                 :defer-provider-validation-p t))
+              (permission-mode
+                (or (getopt* command ':permissions)
+                    (preferences-permission-mode configuration)
+                    ':auto))
+              (status
+                (primary-job-run input output permission-mode
+                                 :configuration configuration)))
+         (unless (zerop status)
+           (uiop:quit status)))))))
+
 
 (-> main--update-command () clingon:command)
 (defun main--update-command ()
@@ -1055,6 +1095,7 @@ both update the packaged installation and exit without starting a session."
                        (main--update-command)
                        (main--data-command)
                        (main--run-job-command)
+                       (main--run-primary-job-command)
                        (main-localgroup-command))
    :handler
    (lambda (command)

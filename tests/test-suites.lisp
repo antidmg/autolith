@@ -410,6 +410,9 @@
 (define-test-suite run-job
   run-run-job-tests)
 
+(define-test-suite headless-primary
+  run-headless-primary-tests)
+
 (define-test-suite task-scheduler
   test-task-default-detachment
   test-task-running-cancellation
