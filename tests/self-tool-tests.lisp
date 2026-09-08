@@ -266,6 +266,35 @@
                "lisp.describe target self replaces self.inspect"))
            (let* ((conversation
                     (conversation-create configuration
+                                         :identifier "self-protected-prompt"))
+                  (context
+                    (make-instance 'tool-context
+                                   :configuration configuration
+                                   :worker nil
+                                   :conversation conversation))
+                  (tool
+                    (tool-registry-find (make-default-tool-registry)
+                                        "self"
+                                        "set"))
+                  (previous *system-prompt-template-cache*))
+             (test-assert
+              (handler-case
+                  (progn
+                    (tool-execute
+                     tool
+                     context
+                     (json-object
+                      "symbol" "*system-prompt-template-cache*"
+                      "value" "\"replacement\""))
+                    nil)
+                (source-mutation-error ()
+                  t))
+              "self.set rejects replacement of protected prompt infrastructure")
+             (test-assert
+              (eq previous *system-prompt-template-cache*)
+              "a rejected protected setting leaves the base prompt unchanged"))
+           (let* ((conversation
+                    (conversation-create configuration
                                          :identifier "self-sbcl-source"))
                   (context
                     (make-instance 'tool-context

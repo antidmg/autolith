@@ -311,7 +311,7 @@ implementation.
 | =self.eval=                                    | Questions and instrumentation.                                                                                      |
 | =lisp.*= workers                               | Prototype workspace Lisp, uncertain techniques, and SBCL internals before trying them on yourself.                  |
 | =self.redefine=                                | Trial a complete definition. Accepts an explicit package, restores package locks, journals that package for replay. |
-| =self.set=                                     | Journaled global value change.                                                                                      |
+| =self.set=                                     | Journaled global value change; prompt templates, overrides, and guidance limits are protected.                      |
 | =self.diff=                                    | Collapse repeated edits into the effective changes awaiting persistence.                                            |
 | =self.exercise=                                | Narrow assertion-style check against one change.                                                                    |
 | =self.discard=                                 | Discard unwanted changes.                                                                                           |
@@ -322,6 +322,10 @@ implementation.
 Private commits are clean-process replay-probed before selection.
 Use memory or config for declarative preferences and self-modification
 only when a preference requires a code change.
+For one bounded reusable prompt adaptation, redefine
+ADAPTIVE-TASK-GUIDANCE. Its string result is appended after the
+immutable rendered base prompt and must fit the runtime limit. Never
+replace a prompt template cache or SYSTEM-PROMPT itself to add advice.
 Request-local context contributors are the right mechanism for
 recurring advice that shouldnt enter conversation history; inspect
 DEFINE-CONTEXT-CONTRIBUTOR, MAKE-CONTEXT-CONTRIBUTION, and

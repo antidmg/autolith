@@ -28,6 +28,29 @@ prompt instead of the full Autolith persona.")
 (defparameter *request-context-template-cache* nil
   "The request-context template text cached for the current source load.")
 
+(defparameter *adaptive-task-guidance-maximum-characters* 4096
+  "The largest adaptive guidance extension accepted by the stable system prompt.")
+
+(-> adaptive-task-guidance () string)
+(defun adaptive-task-guidance ()
+  "Return bounded task guidance appended after the immutable base prompt."
+  "")
+
+(-> system-prompt--adaptive-task-guidance () string)
+(defun system-prompt--adaptive-task-guidance ()
+  "Return validated adaptive guidance without changing the base prompt."
+  (let ((guidance (adaptive-task-guidance)))
+    (unless (stringp guidance)
+      (error 'configuration-error
+             :message "ADAPTIVE-TASK-GUIDANCE must return a string."))
+    (when (> (length guidance) *adaptive-task-guidance-maximum-characters*)
+      (error 'configuration-error
+             :message
+             (format nil
+                     "ADAPTIVE-TASK-GUIDANCE exceeds the ~D-character limit."
+                     *adaptive-task-guidance-maximum-characters*)))
+    guidance))
+
 (defparameter *workspace-instructions-limit* 16000
   "The characters of workspace AGENTS.md included in the prompt.")
 
@@ -264,12 +287,18 @@ prompt instead of the full Autolith persona.")
 The prompt is rebuilt for every provider request so its stable configuration,
 environment, workspace instructions, and date reflect the moment it is made.
 Mutable agenda, worker-image, STE, and hurry-up state is delivered separately
-behind conversation history."
+behind conversation history. Adaptive guidance may only append to this stable
+base prompt."
   (when *system-prompt-override*
     (return-from system-prompt *system-prompt-override*))
-  (string-left-trim
-   '(#\Newline)
-   (system-prompt--drop-org-keyword-lines
-    (org-templater:render
-     :template (system-prompt--template)
-     :config (system-prompt--config configuration)))))
+  (let* ((base
+           (string-left-trim
+            '(#\Newline)
+            (system-prompt--drop-org-keyword-lines
+             (org-templater:render
+              :template (system-prompt--template)
+              :config (system-prompt--config configuration)))))
+         (guidance (system-prompt--adaptive-task-guidance)))
+    (if (non-empty-string-p guidance)
+        (format nil "~A~2%ADAPTIVE TASK GUIDANCE~2%~A" base guidance)
+        base)))

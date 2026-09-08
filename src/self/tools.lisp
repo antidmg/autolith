@@ -740,6 +740,19 @@ protocol."
      (format nil "The definition was compiled and installed in package ~A."
              (package-name package)))))
 
+(-> self-set--protected-symbol-p (symbol) boolean)
+(defun self-set--protected-symbol-p (symbol)
+  "Return true when SYMBOL owns prompt or mutation-policy infrastructure."
+  (not
+   (null
+    (member symbol
+            '(*system-prompt-template-cache*
+              *request-context-template-cache*
+              *system-prompt-override*
+              *adaptive-task-guidance-maximum-characters*)
+            :test #'eq))))
+
+
 (defmethod tool-execute ((tool self-set-tool)
                          (context tool-context)
                          (arguments hash-table))
@@ -755,6 +768,15 @@ protocol."
                           (sbcl-worker-render-value (symbol-value symbol))))
            (previous-bound-p (boundp symbol))
            (previous-value (and (boundp symbol) (symbol-value symbol))))
+      (when (self-set--protected-symbol-p symbol)
+        (error 'source-mutation-error
+               :message
+               (format nil
+                       "~S is protected prompt infrastructure; redefine ~
+                        ADAPTIVE-TASK-GUIDANCE instead."
+                       symbol)
+               :tool-name "self.set"
+               :pathname nil))
        (tuning-experiment-assert-mutation-installable configuration "self.set")
       (mutation-journal-append
        configuration

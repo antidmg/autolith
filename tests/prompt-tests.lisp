@@ -70,6 +70,35 @@
                                    "hosted search is omitted unless the request hosts it")
              (prompt-tests--absent prompt "This session was started with --immutable"
                                    "immutable guidance is omitted for a live image"))
+           (test-call-with-function-replacements
+            (list
+             (list 'adaptive-task-guidance
+                   (lambda ()
+                     "Read the verifier before changing the implementation.")))
+            (lambda ()
+              (let ((prompt (system-prompt configuration)))
+                (prompt-tests--contains
+                 prompt "You are Autolith"
+                 "adaptive guidance preserves the immutable base prompt")
+                (prompt-tests--contains
+                 prompt "ADAPTIVE TASK GUIDANCE"
+                 "adaptive guidance has an explicit prompt boundary")
+                (prompt-tests--contains
+                 prompt "Read the verifier before changing the implementation."
+                 "adaptive guidance appends its bounded content"))))
+           (test-call-with-function-replacements
+            (list
+             (list 'adaptive-task-guidance
+                   (lambda ()
+                     (make-string
+                      (1+ *adaptive-task-guidance-maximum-characters*)))))
+            (lambda ()
+              (test-assert
+               (handler-case
+                   (progn (system-prompt configuration) nil)
+                 (configuration-error ()
+                   t))
+               "oversized adaptive guidance fails instead of replacing the base prompt")))
            (let ((prompt (let ((*system-prompt-hosted-web-search-p* t))
                            (system-prompt configuration))))
              (prompt-tests--contains prompt "hosted web_search"
