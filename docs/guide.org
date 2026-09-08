@@ -725,26 +725,42 @@ autolith --permissions auto run-primary-job \
   --output /path/to/primary-result.sexp
 #+END_SRC
 
-The input names its durable conversation and fences the exact next sequence:
+The version-two input names its durable conversation, fences the exact next
+sequence and loaded generation, and declares every model and tool budget:
 
 #+BEGIN_SRC lisp
 (:autolith-primary-job
- :version 1
+ :version 2
  :id "realm-effect-id"
  :conversation-id "realm-continuation-id"
  :expected-next-sequence 1
+ :expected-generation "retained-generation-id"
  :prompt "Inspect the failure and improve the active image."
- :timeout-seconds 900)
+ :reasoning-effort "low"
+ :maximum-output-tokens 1024
+ :maximum-provider-requests 6
+ :tool-allowlist ("resource.read" "self.redefine" "self.diff"
+                  "self.exercise" "self.commit" "self.discard")
+ :timeout-seconds 120)
 #+END_SRC
 
-The command opens or creates that exact conversation. A mismatched
-=:expected-next-sequence= fails before another user message or provider request,
-so retrying an uncertain completed turn cannot duplicate it silently. The
-atomic =(:autolith-primary-job-result :version 1 ...)= artifact reports the
-conversation cursor, final response, portable observer events, aggregate usage,
-and the exact mutation-journal records appended during the job. Continue with
-the returned =:next-sequence=. The in-process deadline interrupts the active
-turn; the calling supervisor still owns the hard process-lifetime bound.
+Use =NIL= for =:expected-generation= only when clean tracked source is required.
+The command fails before persisting a user message or making a provider request
+when recovery fallback is active, the loaded generation differs, an allowed
+tool is unavailable, the reasoning selection is invalid, or adaptive guidance
+cannot render. The exact allowlist is advertised and enforced for fabricated
+calls as well as normal tool selection.
+
+A mismatched =:expected-next-sequence= fails before another user message or
+provider request, so retrying an uncertain completed turn cannot duplicate it
+silently. Each provider request receives =:maximum-output-tokens=, and the
+complete turn cannot exceed =:maximum-provider-requests=. The atomic
+=(:autolith-primary-job-result :version 2 ...)= artifact reports the
+conversation cursor, final response, loaded-generation evidence, applied
+limits, exact tool allowlist, portable observer events, aggregate usage, and
+the mutation-journal records appended during the job. Continue with the
+returned =:next-sequence=. The in-process deadline interrupts the active turn;
+the calling supervisor still owns the hard process-lifetime bound.
 
 * Generations and recovery
 
