@@ -671,26 +671,126 @@ message, which thinking-mode providers require passed back."
    :accept "text/event-stream"
    :content-type "application/json"
    :custom (openai-compatible-provider-headers provider)))
+(-> openai-compatible--realm-bridge-value (string) string)
+(defun openai-compatible--realm-bridge-value (name)
+  "Return required non-empty Realm bridge environment variable NAME."
+  (let ((value (uiop:getenv name)))
+    (unless (non-empty-string-p value)
+      (provider--signal-transport-failure
+       (format nil "The Realm model bridge requires ~A." name)
+       :retryable-p nil))
+    value))
+
+(-> openai-compatible--realm-temporary-pathname (string) pathname)
+(defun openai-compatible--realm-temporary-pathname (suffix)
+  "Return one private temporary pathname carrying SUFFIX."
+  (merge-pathnames
+   (format nil "autolith-realm-~A.~A" (make-identifier) suffix)
+   (uiop:temporary-directory)))
+
+(-> openai-compatible--write-octets
+    (pathname (vector (unsigned-byte 8)))
+    null)
+(defun openai-compatible--write-octets (pathname octets)
+  "Create PATHNAME with exact OCTETS."
+  (with-open-file (stream pathname
+                          :direction ':output
+                          :element-type '(unsigned-byte 8)
+                          :if-exists ':error
+                          :if-does-not-exist ':create)
+    (write-sequence octets stream)
+    (finish-output stream))
+  nil)
+
+(-> openai-compatible--open-realm-response
+    (openai-compatible-provider hash-table conversation)
+    (values stream integer list))
+(defun openai-compatible--open-realm-response
+    (provider request conversation)
+  "Run REQUEST through Realm and return its retained SSE body."
+  (let* ((command
+           (openai-compatible--realm-bridge-value
+            "AUTOLITH_REALM_MODEL_COMMAND"))
+         (realm-id
+           (openai-compatible--realm-bridge-value "AUTOLITH_REALM_ID"))
+         (model-artifact
+           (openai-compatible--realm-bridge-value
+            "AUTOLITH_REALM_MODEL_ARTIFACT"))
+         (engine-generation
+           (openai-compatible--realm-bridge-value
+            "AUTOLITH_REALM_ENGINE_GENERATION"))
+         (timeout
+           (or (uiop:getenv "AUTOLITH_REALM_MODEL_TIMEOUT_MS") "300000"))
+         (configuration (provider-configuration provider))
+         (input (openai-compatible--realm-temporary-pathname "request.json"))
+         (output (openai-compatible--realm-temporary-pathname "response.sse")))
+    (unless (uiop:absolute-pathname-p (pathname command))
+      (provider--signal-transport-failure
+       "AUTOLITH_REALM_MODEL_COMMAND must be an absolute pathname."
+       :retryable-p nil))
+    (unwind-protect
+         (progn
+           (openai-compatible--write-octets input (json-encode-utf8 request))
+           (multiple-value-bind (realm-output error-output status)
+               (uiop:run-program
+                (list command
+                      "run-model-turn"
+                      "--realm" realm-id
+                      "--continuation-id" (conversation-identifier conversation)
+                      "--endpoint"
+                      (configuration-provider-endpoint configuration)
+                      "--model" (configuration-model configuration)
+                      "--model-artifact" model-artifact
+                      "--engine-generation" engine-generation
+                      "--timeout-ms" timeout
+                      "--input" (namestring input)
+                      "--output" (namestring output))
+                :output ':string
+                :error-output ':output
+                :ignore-error-status t)
+             (declare (ignore error-output))
+             (unless (zerop status)
+               (provider--signal-transport-failure
+                (format nil "Realm model turn failed: ~A"
+                        (string-trim '(#\Space #\Tab #\Newline #\Return)
+                                     realm-output))
+                :retryable-p nil)))
+           (let ((stream
+                   (open output
+                         :direction ':input
+                         :external-format ':utf-8)))
+             (delete-file output)
+             (setf output nil)
+             (values stream 200 nil)))
+      (when (probe-file input)
+        (delete-file input))
+      (when (and output (probe-file output))
+        (delete-file output)))))
+
 
 (defmethod provider-open-response-stream
     ((provider openai-compatible-provider)
      (request hash-table)
      &key credentials conversation)
-  "Open one authenticated streaming Chat Completions request."
+  "Open one authenticated or Realm-mediated streaming Chat Completions request."
   (declare (type oauth-credentials credentials)
            (type conversation conversation))
-  (provider-call-with-response-deadline
-   300
-   (lambda ()
-     (dexador:post
-      (configuration-provider-endpoint (provider-configuration provider))
-      :headers (openai-compatible--request-headers provider credentials conversation)
-      :content (json-encode-utf8 request)
-      :want-stream t
-      :force-string t
-      :keep-alive nil
-      :connect-timeout 30
-      :read-timeout 300))))
+  (let ((realm-command (uiop:getenv "AUTOLITH_REALM_MODEL_COMMAND")))
+    (if (non-empty-string-p realm-command)
+        (openai-compatible--open-realm-response provider request conversation)
+        (provider-call-with-response-deadline
+         300
+         (lambda ()
+           (dexador:post
+            (configuration-provider-endpoint (provider-configuration provider))
+            :headers
+            (openai-compatible--request-headers provider credentials conversation)
+            :content (json-encode-utf8 request)
+            :want-stream t
+            :force-string t
+            :keep-alive nil
+            :connect-timeout 30
+            :read-timeout 300))))))
 
 
 ;;;; -- Chat Completions Stream Decoding --

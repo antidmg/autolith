@@ -492,6 +492,17 @@ Register a OpenAI-compatible provider:
  :models-endpoint "https://api.example.com/v1/models")
 #+END_SRC
 
+Set =AUTOLITH_REALM_MODEL_COMMAND= to an absolute =ethereal= executable to
+route Chat Completions turns through a local Realm daemon instead of connecting
+directly. The bridge also requires =AUTOLITH_REALM_ID=,
+=AUTOLITH_REALM_MODEL_ARTIFACT=, and =AUTOLITH_REALM_ENGINE_GENERATION=.
+=AUTOLITH_REALM_MODEL_TIMEOUT_MS= optionally sets the per-turn timeout and
+defaults to 300000. Realm receives the complete JSON request, calls only the
+provider's configured loopback HTTP endpoint, retains the response body and raw
+headers as artifacts, and returns the retained SSE body to Autolith. Provider
+credentials and configured custom headers are not forwarded through this local
+bridge. Model discovery remains on the provider's normal path.
+
 Inside a session, =/auth= and =(auth)= are the same operation. Omit the
 provider to pick one interactively, or use =/auth my-provider= and
 =(auth "my-provider")= for an explicit selection. Use

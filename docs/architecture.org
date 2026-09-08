@@ -108,6 +108,9 @@ The library we use is =sexp-store=,
 - =src/provider/client.lisp= describes replaceable provider protocol,
   encoding, HTTP, and SSE. It emits semantic stream events,
   which are processed by our rendering machinery et al.
+- OpenAI-compatible turns optionally cross the local Realm model-turn boundary.
+  Realm retains the complete request, response, headers, and declared engine
+  identity; Autolith still decodes the returned SSE into semantic events.
 - Tools have metadata, namespaces, validation, and a result for every
   call, including failed ones
 - =src/tools/defaults.lisp= assembles the registry
